@@ -40,7 +40,7 @@ jobs:
         branch: ${{ matrix.openstack_version }}
         enabled_services: "openstack-cli-server,neutron-trunk,neutron-port-trusted-vif"
         conf_overrides: |
-          enable_plugin neutron https://github.com/openstack/neutron ${{ matrix.openstack_version }}
+          Q_ML2_PLUGIN_EXT_DRIVERS=port_trusted
 
           [[post-config|/etc/nova/nova.conf]]
           [filter_scheduler]
