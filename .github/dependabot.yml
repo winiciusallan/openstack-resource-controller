@@ -68,7 +68,7 @@ updates:
     day: "monday"
   cooldown:
     default-days: 7
-  target-branch: release-2.0
+  target-branch: dependabot-test
   groups:
     all-go-mod-patch-and-minor:
       patterns: [ "*" ]
@@ -83,4 +83,8 @@ updates:
   # Ignore k8s major and minor bumps and its transitives modules
   - dependency-name: "k8s.io/*"
     update-types: ["version-update:semver-major", "version-update:semver-minor"]
+  - dependency-name: "go"
+    #update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    versions:
+    - ">=1.26"
 ## release-2.0 branch config ends here
