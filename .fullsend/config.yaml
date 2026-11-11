@@ -46,3 +46,5 @@ inference:
         models:
             gpt-6-luna:
                 api: openai-responses
+            claude-opus-5-5:
+                api: anthropic-messages
