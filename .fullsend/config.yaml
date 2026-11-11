@@ -12,6 +12,23 @@ roles:
     - fix
     - retro
     - prioritize
+agents:
+    - name: triage
+      model: gateway/gpt-6-luna
+    - name: code
+      model: gateway/claude-opus-5-5
+    - name: review
+      model: gateway/gpt-6-luna
+      effort: high
+    - name: fix
+      model: gateway/gpt-6.1-sol
+      effort: high
+    - name: retro
+      model: gateway/gpt-6-luna
+      subagents:
+        default: gateway/gpt-6-luna
+    - name: prioritize
+      model: gateway/gpt-6-luna
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
