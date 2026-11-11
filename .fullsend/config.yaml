@@ -16,7 +16,9 @@ agents:
     - name: triage
       model: gateway/gpt-6-luna
     - name: code
+      runtime: claude
       model: gateway/claude-opus-5-5
+      effort: high
     - name: review
       model: gateway/gpt-6-luna
       effort: high
