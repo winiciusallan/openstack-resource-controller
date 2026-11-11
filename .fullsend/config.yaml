@@ -16,8 +16,7 @@ agents:
     - name: triage
       model: gateway/gpt-6-luna
     - name: code
-      runtime: claude
-      model: gateway/claude-opus-5-5
+      model: gateway/gpt-6.1-sol
       effort: high
     - name: review
       model: gateway/gpt-6-luna
@@ -46,5 +45,5 @@ inference:
         models:
             gpt-6-luna:
                 api: openai-responses
-            claude-opus-5-5:
-                api: anthropic-messages
+            gpt-6.1-sol:
+                api: openai-responses
