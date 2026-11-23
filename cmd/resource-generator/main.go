@@ -258,6 +258,16 @@ var resources []templateFields = []templateFields{
 			},
 		},
 	},
+	{
+		Name:         "SwiftContainer",
+		UsesNameAsID: true,
+		SpecExtraValidations: []specExtraValidation{
+			{
+				Rule:    "!has(oldSelf.resource) || self.resource == oldSelf.resource",
+				Message: "resource specification is immutable",
+			},
+		},
+	},
 }
 
 // These resources won't be generated
