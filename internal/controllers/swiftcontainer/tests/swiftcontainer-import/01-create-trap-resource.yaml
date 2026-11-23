@@ -11,3 +11,31 @@ spec:
   resource:
     quotaBytes: 9999999999
     quotaCount: 99999
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-adopt-target
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack
+    secretName: openstack-clouds
+  managementPolicy: managed
+  resource:
+    name: swiftcontainer-adopt-source
+    readACL: ".r:*"
+    writeACL: "project_admin"
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-adopt-mismatch
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack
+    secretName: openstack-clouds
+  managementPolicy: managed
+  resource:
+    name: swiftcontainer-adopt-source
+    readACL: ".r:-internal.com"
+    writeACL: "project_admin"

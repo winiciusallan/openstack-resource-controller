@@ -1,0 +1,11 @@
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-safe-delete-nonempty
+status:
+  conditions:
+    - type: Available
+      status: "True"
+  resource:
+    objectCount: 1

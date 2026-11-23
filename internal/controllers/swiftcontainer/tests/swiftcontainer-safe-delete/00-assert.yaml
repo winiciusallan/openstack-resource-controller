@@ -2,25 +2,19 @@
 apiVersion: openstack.k-orc.cloud/v1alpha1
 kind: SwiftContainer
 metadata:
-  name: swiftcontainer-detach
+  name: swiftcontainer-safe-delete-empty
 status:
   conditions:
     - type: Available
       status: "True"
-  id: swiftcontainer-detach
-  resource:
-    name: swiftcontainer-detach
-    quotaBytes: 123456
+  id: swiftcontainer-safe-delete-empty
 ---
 apiVersion: openstack.k-orc.cloud/v1alpha1
 kind: SwiftContainer
 metadata:
-  name: swiftcontainer-to-delete
+  name: swiftcontainer-safe-delete-nonempty
 status:
   conditions:
     - type: Available
       status: "True"
-  id: swiftcontainer-to-delete
-  resource:
-    name: swiftcontainer-to-delete
-    quotaBytes: 789012
+  id: swiftcontainer-safe-delete-nonempty

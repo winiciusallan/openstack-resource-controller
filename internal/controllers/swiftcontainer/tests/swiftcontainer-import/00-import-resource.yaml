@@ -13,3 +13,16 @@ spec:
       name: swiftcontainer-import-external
       quotaBytes: 5368709120
       quotaCount: 25000
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-adopt-source
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack
+    secretName: openstack-clouds
+  managementPolicy: managed
+  resource:
+    readACL: ".r:*"
+    writeACL: "project_admin"
