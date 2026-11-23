@@ -1,0 +1,24 @@
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-create
+status:
+  conditions:
+    - type: Available
+      status: "True"
+      reason: Success
+    - type: Progressing
+      status: "False"
+      reason: Success
+  id: swiftcontainer-create
+  resource:
+    name: swiftcontainer-create
+    metadata:
+      foo: bar
+    readACL: ".r:*"
+    writeACL: "project_admin"
+    quotaBytes: 10737418240
+    quotaCount: 50000
+    bytesUsed: 0
+    objectCount: 0

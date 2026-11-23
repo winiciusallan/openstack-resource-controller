@@ -1,0 +1,7 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - command: kubectl delete swiftcontainer swiftcontainer-detach --wait=false
+  - command: kubectl delete swiftcontainer swiftcontainer-to-delete --wait=false
+  - command: kubectl wait --for=delete swiftcontainer/swiftcontainer-detach --timeout=60s
+  - command: kubectl wait --for=delete swiftcontainer/swiftcontainer-to-delete --timeout=60s

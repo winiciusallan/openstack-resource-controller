@@ -1,0 +1,17 @@
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-create
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack
+    secretName: openstack-clouds
+  managementPolicy: managed
+  resource:
+    metadata:
+      foo: bar
+    readACL: ".r:*"
+    writeACL: "project_admin"
+    quotaBytes: 10737418240
+    quotaCount: 50000

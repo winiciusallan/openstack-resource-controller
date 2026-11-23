@@ -1,0 +1,26 @@
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-reimport
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack
+    secretName: openstack-clouds
+  managementPolicy: unmanaged
+  import:
+    filter:
+      name: swiftcontainer-detach
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-verify-deleted
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack
+    secretName: openstack-clouds
+  managementPolicy: unmanaged
+  import:
+    filter:
+      name: swiftcontainer-to-delete
