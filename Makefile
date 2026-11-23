@@ -4,7 +4,7 @@ BUNDLE_IMG ?= bundle:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.29.0
 TRIVY_VERSION = 0.69.3
-GO_VERSION ?= 1.26.10
+GO_VERSION ?= 1.26.11
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -137,6 +137,11 @@ test: envtest
 #   run. If not set, all discovered kuttl tests will run.
 # - E2E_KUTTL_TEST: if set, only run the specific named test, e.g.
 #   'create-full-v4'. If not set, all tests will run.
+# - E2E_OPENSTACK_VERSION: if set, the known OpenStack versions range covering
+#   this version will be passed as a test run label `--test-run-labels min-version1=true,min-version2=true,max-version2=true,max-version3=true,`.
+#	See ./hack/e2e.sh . Test cases can be run/skipped with `testRunSelector` in `TestCase` based on it.
+# - E2E_KUTTL_SKIP_ADMIN: if set to true, skip the tests that need admin
+#   credentials, for clouds where we don't have them.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e: kuttl
 	# go test ./test/e2e/ -v -ginkgo.v
@@ -333,7 +338,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.20.1
 ENVTEST_VERSION ?= release-0.23
 GOLANGCI_LINT_VERSION ?= v2.11.4
 MOCKGEN_VERSION ?= v0.6.0
-KUTTL_VERSION ?= v0.27.0
+KUTTL_VERSION ?= v0.28.0
 GOVULNCHECK_VERSION ?= v1.1.4
 OPERATOR_SDK_VERSION ?= v1.42.2
 
