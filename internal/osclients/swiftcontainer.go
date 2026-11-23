@@ -62,13 +62,7 @@ func (c *swiftContainerClient) GetContainer(ctx context.Context, name string) (m
 	if res.Err != nil {
 		return nil, res.Err
 	}
-	headers := make(map[string]string)
-	for k, v := range res.Header {
-		if len(v) > 0 {
-			headers[k] = v[0]
-		}
-	}
-	return headers, nil
+	return extractHeaders(res.Header), nil
 }
 
 func (c *swiftContainerClient) CreateContainer(ctx context.Context, name string, opts containers.CreateOptsBuilder) (map[string]string, error) {
@@ -76,13 +70,17 @@ func (c *swiftContainerClient) CreateContainer(ctx context.Context, name string,
 	if res.Err != nil {
 		return nil, res.Err
 	}
+	return extractHeaders(res.Header), nil
+}
+
+func extractHeaders(header map[string][]string) map[string]string {
 	headers := make(map[string]string)
-	for k, v := range res.Header {
+	for k, v := range header {
 		if len(v) > 0 {
 			headers[k] = v[0]
 		}
 	}
-	return headers, nil
+	return headers
 }
 
 func (c *swiftContainerClient) DeleteContainer(ctx context.Context, name string) error {
