@@ -78,6 +78,19 @@ func TestParseSwiftHeaders(t *testing.T) {
 			},
 		},
 		{
+			name: "mixed case and complex metadata",
+			headers: map[string]string{
+				"X-Container-Meta-Some-Property":   "val1",
+				"X-Container-Meta-AnotherProperty": "val2",
+			},
+			expected: orcv1alpha1.SwiftContainerResourceStatus{
+				Metadata: map[string]string{
+					"some-property":   "val1",
+					"anotherproperty": "val2",
+				},
+			},
+		},
+		{
 			name:    "empty headers",
 			headers: map[string]string{},
 			expected: orcv1alpha1.SwiftContainerResourceStatus{
