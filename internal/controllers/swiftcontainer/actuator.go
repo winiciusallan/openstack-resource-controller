@@ -31,6 +31,7 @@ import (
 	orcv1alpha1 "github.com/k-orc/openstack-resource-controller/v3/api/v1alpha1"
 	"github.com/k-orc/openstack-resource-controller/v3/internal/controllers/generic/interfaces"
 	"github.com/k-orc/openstack-resource-controller/v3/internal/controllers/generic/progress"
+	"github.com/k-orc/openstack-resource-controller/v3/internal/logging"
 	"github.com/k-orc/openstack-resource-controller/v3/internal/osclients"
 	orcerrors "github.com/k-orc/openstack-resource-controller/v3/internal/util/errors"
 )
@@ -271,11 +272,74 @@ func (actuator swiftcontainerActuator) DeleteResource(ctx context.Context, orcOb
 	return progress.WrapError(actuator.osClient.DeleteContainer(ctx, osResource.Name))
 }
 
-func (swiftcontainerActuator) GetResourceReconcilers(ctx context.Context, orcObject orcObjectPT, osResource *osResourceT, controller interfaces.ResourceController) ([]interfaces.ResourceReconciler[orcObjectPT, osResourceT], progress.ReconcileStatus) {
-	// Since SwiftContainer resource spec fields are immutable and there is no update API for containers in our controller,
-	// we do not perform any write updates on OpenStack. Instead, any drift in metadata or ACLs is simply observed
-	// and written to the status field by the status writer on each reconcile.
-	return nil, nil
+func (actuator swiftcontainerActuator) GetResourceReconcilers(ctx context.Context, orcObject orcObjectPT, osResource *osResourceT, controller interfaces.ResourceController) ([]interfaces.ResourceReconciler[orcObjectPT, osResourceT], progress.ReconcileStatus) {
+	return []interfaces.ResourceReconciler[orcObjectPT, osResourceT]{
+		actuator.monitorDrift,
+	}, nil
+}
+
+func (actuator swiftcontainerActuator) monitorDrift(ctx context.Context, orcObject orcObjectPT, osResource *osResourceT) progress.ReconcileStatus {
+	log := ctrl.LoggerFrom(ctx)
+	spec := orcObject.Spec.Resource
+	if spec == nil {
+		return nil
+	}
+
+	status := osclients.ParseSwiftHeaders(osResource.Headers)
+	drifted := false
+
+	if spec.ReadACL != nil && status.ReadACL != *spec.ReadACL {
+		log.V(logging.Info).Info("Drift detected on ReadACL", "desired", *spec.ReadACL, "observed", status.ReadACL)
+		drifted = true
+	}
+
+	if spec.WriteACL != nil && status.WriteACL != *spec.WriteACL {
+		log.V(logging.Info).Info("Drift detected on WriteACL", "desired", *spec.WriteACL, "observed", status.WriteACL)
+		drifted = true
+	}
+
+	if spec.StoragePolicy != nil && status.StoragePolicy != *spec.StoragePolicy {
+		log.V(logging.Info).Info("Drift detected on StoragePolicy", "desired", *spec.StoragePolicy, "observed", status.StoragePolicy)
+		drifted = true
+	}
+
+	if spec.QuotaBytes != nil {
+		if status.QuotaBytes == nil || *status.QuotaBytes != *spec.QuotaBytes {
+			observed := int64(0)
+			if status.QuotaBytes != nil {
+				observed = *status.QuotaBytes
+			}
+			log.V(logging.Info).Info("Drift detected on QuotaBytes", "desired", *spec.QuotaBytes, "observed", observed)
+			drifted = true
+		}
+	}
+
+	if spec.QuotaCount != nil {
+		if status.QuotaCount == nil || *status.QuotaCount != *spec.QuotaCount {
+			observed := int64(0)
+			if status.QuotaCount != nil {
+				observed = *status.QuotaCount
+			}
+			log.V(logging.Info).Info("Drift detected on QuotaCount", "desired", *spec.QuotaCount, "observed", observed)
+			drifted = true
+		}
+	}
+
+	for k, v := range spec.Metadata {
+		observedVal, exists := status.Metadata[strings.ToLower(k)]
+		if !exists || observedVal != v {
+			log.V(logging.Info).Info("Drift detected on Metadata", "key", k, "desired", v, "observed", observedVal)
+			drifted = true
+		}
+	}
+
+	if drifted {
+		log.V(logging.Info).Info("Out-of-band drift detected in Swift container, updating status to match remote configuration")
+		orcObject.Status.Resource = &status
+		orcObject.Status.Resource.Name = osResource.Name
+	}
+
+	return nil
 }
 
 func getHeader(headers map[string]string, key string) string {

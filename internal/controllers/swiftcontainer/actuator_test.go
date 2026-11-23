@@ -261,3 +261,133 @@ func TestListOSResourcesForAdoption(t *testing.T) {
 		}
 	})
 }
+
+func TestGetResourceReconcilers(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	t.Run("no drift", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					ReadACL:    ptr.To(".r:*"),
+					WriteACL:   ptr.To("project_admin"),
+					QuotaBytes: ptr.To(int64(1000)),
+					QuotaCount: ptr.To(int64(50)),
+					Metadata: map[string]string{
+						"foo": "bar",
+					},
+				},
+			},
+			Status: orcv1alpha1.SwiftContainerStatus{
+				Resource: &orcv1alpha1.SwiftContainerResourceStatus{
+					ReadACL:    ".r:*",
+					WriteACL:   "project_admin",
+					QuotaBytes: ptr.To(int64(1000)),
+					QuotaCount: ptr.To(int64(50)),
+					Metadata: map[string]string{
+						"foo": "bar",
+					},
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{
+				Name: "test-container",
+			},
+			Headers: map[string]string{
+				"X-Container-Read":             ".r:*",
+				"X-Container-Write":            "project_admin",
+				"X-Container-Meta-Quota-Bytes": "1000",
+				"X-Container-Meta-Quota-Count": "50",
+				"X-Container-Meta-Foo":         "bar",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+		if len(reconcilers) != 1 {
+			t.Fatalf("expected 1 reconciler, got %d", len(reconcilers))
+		}
+
+		// Initial status resource pointer to check if it has changed
+		initialStatus := orcObject.Status.Resource
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource != initialStatus {
+			t.Error("expected Status.Resource to not be modified on no drift")
+		}
+	})
+
+	t.Run("drift detected", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					ReadACL:    ptr.To(".r:*"),
+					WriteACL:   ptr.To("project_admin"),
+					QuotaBytes: ptr.To(int64(1000)),
+					QuotaCount: ptr.To(int64(50)),
+					Metadata: map[string]string{
+						"foo": "bar",
+					},
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{
+				Name: "test-container",
+			},
+			Headers: map[string]string{
+				"X-Container-Read":             ".r:-internal.com", // drifted
+				"X-Container-Write":            "admin_only",       // drifted
+				"X-Container-Meta-Quota-Bytes": "2000",             // drifted
+				"X-Container-Meta-Quota-Count": "100",              // drifted
+				"X-Container-Meta-Foo":         "baz",              // drifted
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+		if len(reconcilers) != 1 {
+			t.Fatalf("expected 1 reconciler, got %d", len(reconcilers))
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		status := orcObject.Status.Resource
+		if status == nil {
+			t.Fatal("expected Status.Resource to be populated")
+		}
+		if status.ReadACL != ".r:-internal.com" {
+			t.Errorf("expected ReadACL .r:-internal.com, got %s", status.ReadACL)
+		}
+		if status.WriteACL != "admin_only" {
+			t.Errorf("expected WriteACL admin_only, got %s", status.WriteACL)
+		}
+		if status.QuotaBytes == nil || *status.QuotaBytes != 2000 {
+			t.Errorf("expected QuotaBytes 2000, got %v", status.QuotaBytes)
+		}
+		if status.QuotaCount == nil || *status.QuotaCount != 100 {
+			t.Errorf("expected QuotaCount 100, got %v", status.QuotaCount)
+		}
+		if status.Metadata["foo"] != "baz" {
+			t.Errorf("expected Metadata foo=baz, got %v", status.Metadata)
+		}
+	})
+}
