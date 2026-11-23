@@ -1,0 +1,8 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: |
+      cd $(dirname ${E2E_KUTTL_OSCLOUDS})
+      export OS_CLOUD=openstack
+      echo "test content" > test_file.txt
+      openstack object create swiftcontainer-safe-delete-nonempty test_file.txt

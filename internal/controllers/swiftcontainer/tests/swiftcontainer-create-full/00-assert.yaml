@@ -1,0 +1,30 @@
+---
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-create-full
+status:
+  conditions:
+    - type: Available
+      status: "True"
+      reason: Success
+    - type: Progressing
+      status: "False"
+      reason: Success
+  id: app-assets-bucket
+  resource:
+    name: app-assets-bucket
+    readACL: ".r:*"
+    writeACL: "project_admin"
+    bytesUsed: 0
+    objectCount: 0
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+resourceRefs:
+    - apiVersion: openstack.k-orc.cloud/v1alpha1
+      kind: SwiftContainer
+      name: swiftcontainer-create-full
+      ref: container
+assertAll:
+    - celExpr: "'openstack.k-orc.cloud/swiftcontainer' in container.metadata.finalizers"

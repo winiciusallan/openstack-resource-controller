@@ -1,16 +1,16 @@
 module github.com/k-orc/openstack-resource-controller/v3/tools/orc-api-linter
 
-go 1.24.0
+go 1.26.0
 
 require (
-	golang.org/x/tools v0.41.0
+	golang.org/x/tools v0.53.0
 	sigs.k8s.io/kube-api-linter v0.0.0-20260320123815-c9b9b51b278a
 )
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2 // indirect
-	golang.org/x/mod v0.32.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/mod v0.43.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
 	k8s.io/apimachinery v0.32.3 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250922181213-ec3ebc5fd46b // indirect
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738 // indirect
