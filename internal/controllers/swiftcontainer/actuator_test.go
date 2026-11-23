@@ -18,6 +18,7 @@ package swiftcontainer
 
 import (
 	"context"
+	"errors"
 	"iter"
 	"net/http"
 	"testing"
@@ -78,59 +79,145 @@ func TestGetOSResourceByID(t *testing.T) {
 			t.Errorf("expected NotFound error, got %v", err)
 		}
 	})
+
+	t.Run("unexpected error", func(t *testing.T) {
+		errUnexpected := errors.New("unexpected swift container error")
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "test-container").Return(nil, errUnexpected)
+
+		res, rs := actuator.GetOSResourceByID(context.Background(), "test-container")
+		if res != nil {
+			t.Errorf("expected nil resource, got %v", res)
+		}
+		if rs == nil {
+			t.Fatal("expected non-nil reschedule status")
+		}
+		_, err := rs.NeedsReschedule()
+		if !errors.Is(err, errUnexpected) {
+			t.Errorf("expected error %v, got %v", errUnexpected, err)
+		}
+	})
 }
 
 func TestCreateResource(t *testing.T) {
-	mockctrl := gomock.NewController(t)
-	defer mockctrl.Finish()
+	t.Run("create success", func(t *testing.T) {
+		mockctrl := gomock.NewController(t)
+		defer mockctrl.Finish()
 
-	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
-	actuator := swiftcontainerActuator{osClient: swiftClient}
+		swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+		actuator := swiftcontainerActuator{osClient: swiftClient}
 
-	orcObject := &orcv1alpha1.SwiftContainer{
-		Spec: orcv1alpha1.SwiftContainerSpec{
-			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-				Name:          ptr.To(orcv1alpha1.OpenStackName("app-assets-bucket")),
-				StoragePolicy: ptr.To("GoldPolicy"),
-				ReadACL:       ptr.To(".r:*"),
-				WriteACL:      ptr.To("project_admin"),
-				QuotaBytes:    ptr.To(int64(10737418240)),
-				QuotaCount:    ptr.To(int64(50000)),
-				Metadata: map[string]string{
-					"owner": "devops",
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					Name:          ptr.To(orcv1alpha1.OpenStackName("app-assets-bucket")),
+					StoragePolicy: ptr.To("GoldPolicy"),
+					ReadACL:       ptr.To(".r:*"),
+					WriteACL:      ptr.To("project_admin"),
+					QuotaBytes:    ptr.To(int64(10737418240)),
+					QuotaCount:    ptr.To(int64(50000)),
+					Metadata: map[string]string{
+						"owner": "devops",
+					},
 				},
 			},
-		},
-	}
+		}
 
-	expectedCreateOpts := containers.CreateOpts{
-		ContainerRead:  ".r:*",
-		ContainerWrite: "project_admin",
-		StoragePolicy:  "GoldPolicy",
-		Metadata: map[string]string{
-			"owner":       "devops",
-			"Quota-Bytes": "10737418240",
-			"Quota-Count": "50000",
-		},
-	}
+		expectedCreateOpts := containers.CreateOpts{
+			ContainerRead:  ".r:*",
+			ContainerWrite: "project_admin",
+			StoragePolicy:  "GoldPolicy",
+			Metadata: map[string]string{
+				"owner":       "devops",
+				"Quota-Bytes": "10737418240",
+				"Quota-Count": "50000",
+			},
+		}
 
-	headers := map[string]string{
-		"X-Container-Object-Count": "0",
-		"X-Container-Bytes-Used":   "0",
-	}
+		headers := map[string]string{
+			"X-Container-Object-Count": "0",
+			"X-Container-Bytes-Used":   "0",
+		}
 
-	swiftClient.EXPECT().CreateContainer(gomock.Any(), "app-assets-bucket", expectedCreateOpts).Return(headers, nil)
+		swiftClient.EXPECT().CreateContainer(gomock.Any(), "app-assets-bucket", expectedCreateOpts).Return(headers, nil)
 
-	res, rs := actuator.CreateResource(context.Background(), orcObject)
-	if rs != nil {
-		t.Fatalf("unexpected reschedule: %v", rs.GetError())
-	}
-	if res.Name != "app-assets-bucket" {
-		t.Errorf("expected Name app-assets-bucket, got %s", res.Name)
-	}
-	if res.Count != 0 {
-		t.Errorf("expected Count 0, got %d", res.Count)
-	}
+		res, rs := actuator.CreateResource(context.Background(), orcObject)
+		if rs != nil {
+			t.Fatalf("unexpected reschedule: %v", rs.GetError())
+		}
+		if res.Name != "app-assets-bucket" {
+			t.Errorf("expected Name app-assets-bucket, got %s", res.Name)
+		}
+		if res.Count != 0 {
+			t.Errorf("expected Count 0, got %d", res.Count)
+		}
+	})
+
+	t.Run("create terminal error", func(t *testing.T) {
+		mockctrl := gomock.NewController(t)
+		defer mockctrl.Finish()
+
+		swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+		actuator := swiftcontainerActuator{osClient: swiftClient}
+
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					Name: ptr.To(orcv1alpha1.OpenStackName("app-assets-bucket")),
+				},
+			},
+		}
+
+		errTerminal := errors.New("client-side validation error") // non-retryable non-HTTP error
+		swiftClient.EXPECT().CreateContainer(gomock.Any(), "app-assets-bucket", gomock.Any()).Return(nil, errTerminal)
+
+		_, rs := actuator.CreateResource(context.Background(), orcObject)
+		if rs == nil {
+			t.Fatal("expected non-nil reschedule status")
+		}
+		_, err := rs.NeedsReschedule()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		var terminalError *orcerrors.TerminalError
+		if !errors.As(err, &terminalError) {
+			t.Fatalf("expected terminal error, got %v", err)
+		}
+		if terminalError.Reason != string(orcv1alpha1.ConditionReasonInvalidConfiguration) {
+			t.Errorf("expected Reason %s, got %s", orcv1alpha1.ConditionReasonInvalidConfiguration, terminalError.Reason)
+		}
+	})
+
+	t.Run("create retryable error", func(t *testing.T) {
+		mockctrl := gomock.NewController(t)
+		defer mockctrl.Finish()
+
+		swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+		actuator := swiftcontainerActuator{osClient: swiftClient}
+
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					Name: ptr.To(orcv1alpha1.OpenStackName("app-assets-bucket")),
+				},
+			},
+		}
+
+		errRetryable := gophercloud.ErrUnexpectedResponseCode{Actual: http.StatusInternalServerError} // 5xx
+		swiftClient.EXPECT().CreateContainer(gomock.Any(), "app-assets-bucket", gomock.Any()).Return(nil, errRetryable)
+
+		_, rs := actuator.CreateResource(context.Background(), orcObject)
+		if rs == nil {
+			t.Fatal("expected non-nil reschedule status")
+		}
+		_, err := rs.NeedsReschedule()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		var terminalError *orcerrors.TerminalError
+		if errors.As(err, &terminalError) {
+			t.Fatal("expected non-terminal error, got terminal error")
+		}
+	})
 }
 
 func TestDeleteResource(t *testing.T) {
@@ -156,8 +243,12 @@ func TestDeleteResource(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !orcv1alpha1.IsConditionReasonTerminal(string(orcv1alpha1.ConditionReasonUnrecoverableError)) {
-			t.Fatal("expected terminal unrecoverable error condition reason")
+		var terminalError *orcerrors.TerminalError
+		if !errors.As(err, &terminalError) {
+			t.Fatalf("expected terminal error, got %v", err)
+		}
+		if terminalError.Reason != string(orcv1alpha1.ConditionReasonUnrecoverableError) {
+			t.Errorf("expected Reason %s, got %s", orcv1alpha1.ConditionReasonUnrecoverableError, terminalError.Reason)
 		}
 	})
 
@@ -174,6 +265,31 @@ func TestDeleteResource(t *testing.T) {
 		rs := actuator.DeleteResource(context.Background(), nil, res)
 		if rs != nil && rs.GetError() != nil {
 			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+	})
+
+	t.Run("delete empty container fails with retryable error", func(t *testing.T) {
+		res := &osResourceT{
+			Container: containers.Container{
+				Name:  "empty-container",
+				Count: 0,
+			},
+		}
+
+		errRetryable := gophercloud.ErrUnexpectedResponseCode{Actual: http.StatusInternalServerError}
+		swiftClient.EXPECT().DeleteContainer(gomock.Any(), "empty-container").Return(errRetryable)
+
+		rs := actuator.DeleteResource(context.Background(), nil, res)
+		if rs == nil {
+			t.Fatal("expected non-nil reschedule status")
+		}
+		_, err := rs.NeedsReschedule()
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		var terminalError *orcerrors.TerminalError
+		if errors.As(err, &terminalError) {
+			t.Fatal("expected non-terminal error, got terminal error")
 		}
 	})
 }
@@ -258,6 +374,208 @@ func TestListOSResourcesForAdoption(t *testing.T) {
 		}
 		if err == nil {
 			t.Fatal("expected error, got nil")
+		}
+	})
+}
+
+func TestListOSResourcesForImport(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	t.Run("import by name success", func(t *testing.T) {
+		filter := orcv1alpha1.SwiftContainerFilter{
+			Name: ptr.To(orcv1alpha1.OpenStackName("legacy-archive")),
+		}
+
+		headers := map[string]string{
+			"X-Container-Object-Count": "10",
+			"X-Container-Bytes-Used":   "500",
+		}
+
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "legacy-archive").Return(headers, nil)
+
+		resourceIter, status := actuator.ListOSResourcesForImport(context.Background(), nil, filter)
+		if status != nil {
+			t.Fatalf("unexpected status: %v", status.GetError())
+		}
+
+		next, stop := iter.Pull2(resourceIter)
+		defer stop()
+
+		res, err, ok := next()
+		if !ok {
+			t.Fatal("expected to yield a resource")
+		}
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Name != "legacy-archive" {
+			t.Errorf("expected Name legacy-archive, got %s", res.Name)
+		}
+		if res.Count != 10 {
+			t.Errorf("expected Count 10, got %d", res.Count)
+		}
+
+		_, _, ok = next()
+		if ok {
+			t.Error("expected only one resource")
+		}
+	})
+
+	t.Run("import by name not found", func(t *testing.T) {
+		filter := orcv1alpha1.SwiftContainerFilter{
+			Name: ptr.To(orcv1alpha1.OpenStackName("legacy-archive")),
+		}
+
+		errNotFound := gophercloud.ErrUnexpectedResponseCode{Actual: http.StatusNotFound}
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "legacy-archive").Return(nil, errNotFound)
+
+		resourceIter, status := actuator.ListOSResourcesForImport(context.Background(), nil, filter)
+		if status != nil {
+			t.Fatalf("unexpected status: %v", status.GetError())
+		}
+
+		next, stop := iter.Pull2(resourceIter)
+		defer stop()
+
+		_, _, ok := next()
+		if ok {
+			t.Error("expected no resources to be yielded")
+		}
+	})
+
+	t.Run("import by name mismatch filter", func(t *testing.T) {
+		filter := orcv1alpha1.SwiftContainerFilter{
+			Name:          ptr.To(orcv1alpha1.OpenStackName("legacy-archive")),
+			StoragePolicy: ptr.To("GoldPolicy"),
+		}
+
+		headers := map[string]string{
+			"X-Storage-Policy": "SilverPolicy", // mismatch
+		}
+
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "legacy-archive").Return(headers, nil)
+
+		resourceIter, status := actuator.ListOSResourcesForImport(context.Background(), nil, filter)
+		if status != nil {
+			t.Fatalf("unexpected status: %v", status.GetError())
+		}
+
+		next, stop := iter.Pull2(resourceIter)
+		defer stop()
+
+		_, _, ok := next()
+		if ok {
+			t.Error("expected no resources to be yielded on filter mismatch")
+		}
+	})
+
+	t.Run("import by name unexpected error", func(t *testing.T) {
+		filter := orcv1alpha1.SwiftContainerFilter{
+			Name: ptr.To(orcv1alpha1.OpenStackName("legacy-archive")),
+		}
+
+		errUnexpected := errors.New("some unexpected API error")
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "legacy-archive").Return(nil, errUnexpected)
+
+		resourceIter, status := actuator.ListOSResourcesForImport(context.Background(), nil, filter)
+		if status != nil {
+			t.Fatalf("unexpected status: %v", status.GetError())
+		}
+
+		next, stop := iter.Pull2(resourceIter)
+		defer stop()
+
+		_, err, ok := next()
+		if !ok {
+			t.Fatal("expected yield to return ok with error")
+		}
+		if !errors.Is(err, errUnexpected) {
+			t.Errorf("expected error %v, got %v", errUnexpected, err)
+		}
+	})
+
+	t.Run("import list containers success", func(t *testing.T) {
+		filter := orcv1alpha1.SwiftContainerFilter{
+			StoragePolicy: ptr.To("GoldPolicy"),
+		}
+
+		containerList := []*containers.Container{
+			{Name: "c1"},
+			{Name: "c2"},
+		}
+
+		// ListContainers returns Seq2[*containers.Container, error]
+		swiftClient.EXPECT().ListContainers(gomock.Any(), nil).Return(func(yield func(*containers.Container, error) bool) {
+			for _, c := range containerList {
+				if !yield(c, nil) {
+					return
+				}
+			}
+		})
+
+		// c1 matches
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "c1").Return(map[string]string{
+			"X-Storage-Policy": "GoldPolicy",
+		}, nil)
+
+		// c2 mismatch
+		swiftClient.EXPECT().GetContainer(gomock.Any(), "c2").Return(map[string]string{
+			"X-Storage-Policy": "SilverPolicy",
+		}, nil)
+
+		resourceIter, status := actuator.ListOSResourcesForImport(context.Background(), nil, filter)
+		if status != nil {
+			t.Fatalf("unexpected status: %v", status.GetError())
+		}
+
+		next, stop := iter.Pull2(resourceIter)
+		defer stop()
+
+		res, err, ok := next()
+		if !ok {
+			t.Fatal("expected c1 to be yielded")
+		}
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Name != "c1" {
+			t.Errorf("expected Name c1, got %s", res.Name)
+		}
+
+		_, _, ok = next()
+		if ok {
+			t.Error("expected only one resource to be yielded")
+		}
+	})
+
+	t.Run("import list containers error", func(t *testing.T) {
+		filter := orcv1alpha1.SwiftContainerFilter{
+			StoragePolicy: ptr.To("GoldPolicy"),
+		}
+
+		errUnexpected := errors.New("list error")
+		swiftClient.EXPECT().ListContainers(gomock.Any(), nil).Return(func(yield func(*containers.Container, error) bool) {
+			yield(nil, errUnexpected)
+		})
+
+		resourceIter, status := actuator.ListOSResourcesForImport(context.Background(), nil, filter)
+		if status != nil {
+			t.Fatalf("unexpected status: %v", status.GetError())
+		}
+
+		next, stop := iter.Pull2(resourceIter)
+		defer stop()
+
+		_, err, ok := next()
+		if !ok {
+			t.Fatal("expected yield to return ok with error")
+		}
+		if !errors.Is(err, errUnexpected) {
+			t.Errorf("expected error %v, got %v", errUnexpected, err)
 		}
 	})
 }
@@ -388,6 +706,194 @@ func TestGetResourceReconcilers(t *testing.T) {
 		}
 		if status.Metadata["foo"] != "baz" {
 			t.Errorf("expected Metadata foo=baz, got %v", status.Metadata)
+		}
+	})
+
+	t.Run("drift on ReadACL", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					ReadACL: ptr.To(".r:*"),
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{Name: "test-container"},
+			Headers: map[string]string{
+				"X-Container-Read": ".r:-internal.com",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource == nil || orcObject.Status.Resource.ReadACL != ".r:-internal.com" {
+			t.Errorf("expected status ReadACL to be .r:-internal.com, got %v", orcObject.Status.Resource)
+		}
+	})
+
+	t.Run("drift on WriteACL", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					WriteACL: ptr.To("project_admin"),
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{Name: "test-container"},
+			Headers: map[string]string{
+				"X-Container-Write": "admin_only",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource == nil || orcObject.Status.Resource.WriteACL != "admin_only" {
+			t.Errorf("expected status WriteACL to be admin_only, got %v", orcObject.Status.Resource)
+		}
+	})
+
+	t.Run("drift on StoragePolicy", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					StoragePolicy: ptr.To("GoldPolicy"),
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{Name: "test-container"},
+			Headers: map[string]string{
+				"X-Storage-Policy": "SilverPolicy",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource == nil || orcObject.Status.Resource.StoragePolicy != "SilverPolicy" {
+			t.Errorf("expected status StoragePolicy to be SilverPolicy, got %v", orcObject.Status.Resource)
+		}
+	})
+
+	t.Run("drift on QuotaBytes", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					QuotaBytes: ptr.To(int64(1000)),
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{Name: "test-container"},
+			Headers: map[string]string{
+				"X-Container-Meta-Quota-Bytes": "2000",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource == nil || orcObject.Status.Resource.QuotaBytes == nil || *orcObject.Status.Resource.QuotaBytes != 2000 {
+			t.Errorf("expected status QuotaBytes to be 2000, got %v", orcObject.Status.Resource)
+		}
+	})
+
+	t.Run("drift on QuotaCount", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					QuotaCount: ptr.To(int64(50)),
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{Name: "test-container"},
+			Headers: map[string]string{
+				"X-Container-Meta-Quota-Count": "100",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource == nil || orcObject.Status.Resource.QuotaCount == nil || *orcObject.Status.Resource.QuotaCount != 100 {
+			t.Errorf("expected status QuotaCount to be 100, got %v", orcObject.Status.Resource)
+		}
+	})
+
+	t.Run("drift on Metadata", func(t *testing.T) {
+		orcObject := &orcv1alpha1.SwiftContainer{
+			Spec: orcv1alpha1.SwiftContainerSpec{
+				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+					Metadata: map[string]string{
+						"owner": "devops",
+					},
+				},
+			},
+		}
+
+		osResource := &osResourceT{
+			Container: containers.Container{Name: "test-container"},
+			Headers: map[string]string{
+				"X-Container-Meta-Owner": "platform",
+			},
+		}
+
+		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+		if rs != nil {
+			t.Fatalf("unexpected error: %v", rs.GetError())
+		}
+
+		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+		if reconRS != nil {
+			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+		}
+
+		if orcObject.Status.Resource == nil || orcObject.Status.Resource.Metadata["owner"] != "platform" {
+			t.Errorf("expected status Metadata owner=platform, got %v", orcObject.Status.Resource)
 		}
 	})
 }
