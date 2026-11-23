@@ -580,320 +580,360 @@ func TestListOSResourcesForImport(t *testing.T) {
 	})
 }
 
-func TestGetResourceReconcilers(t *testing.T) {
+func TestGetResourceReconcilers_NoDrift(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	defer mockctrl.Finish()
 
 	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
 	actuator := swiftcontainerActuator{osClient: swiftClient}
 
-	t.Run("no drift", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					ReadACL:    ptr.To(".r:*"),
-					WriteACL:   ptr.To("project_admin"),
-					QuotaBytes: ptr.To(int64(1000)),
-					QuotaCount: ptr.To(int64(50)),
-					Metadata: map[string]string{
-						"foo": "bar",
-					},
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				ReadACL:    ptr.To(".r:*"),
+				WriteACL:   ptr.To("project_admin"),
+				QuotaBytes: ptr.To(int64(1000)),
+				QuotaCount: ptr.To(int64(50)),
+				Metadata: map[string]string{
+					"foo": "bar",
 				},
 			},
-			Status: orcv1alpha1.SwiftContainerStatus{
-				Resource: &orcv1alpha1.SwiftContainerResourceStatus{
-					ReadACL:    ".r:*",
-					WriteACL:   "project_admin",
-					QuotaBytes: ptr.To(int64(1000)),
-					QuotaCount: ptr.To(int64(50)),
-					Metadata: map[string]string{
-						"foo": "bar",
-					},
+		},
+		Status: orcv1alpha1.SwiftContainerStatus{
+			Resource: &orcv1alpha1.SwiftContainerResourceStatus{
+				ReadACL:    ".r:*",
+				WriteACL:   "project_admin",
+				QuotaBytes: ptr.To(int64(1000)),
+				QuotaCount: ptr.To(int64(50)),
+				Metadata: map[string]string{
+					"foo": "bar",
 				},
 			},
-		}
+		},
+	}
 
-		osResource := &osResourceT{
-			Container: containers.Container{
-				Name: "test-container",
-			},
-			Headers: map[string]string{
-				"X-Container-Read":             ".r:*",
-				"X-Container-Write":            "project_admin",
-				"X-Container-Meta-Quota-Bytes": "1000",
-				"X-Container-Meta-Quota-Count": "50",
-				"X-Container-Meta-Foo":         "bar",
-			},
-		}
+	osResource := &osResourceT{
+		Container: containers.Container{
+			Name: "test-container",
+		},
+		Headers: map[string]string{
+			"X-Container-Read":             ".r:*",
+			"X-Container-Write":            "project_admin",
+			"X-Container-Meta-Quota-Bytes": "1000",
+			"X-Container-Meta-Quota-Count": "50",
+			"X-Container-Meta-Foo":         "bar",
+		},
+	}
 
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-		if len(reconcilers) != 1 {
-			t.Fatalf("expected 1 reconciler, got %d", len(reconcilers))
-		}
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
+	if len(reconcilers) != 1 {
+		t.Fatalf("expected 1 reconciler, got %d", len(reconcilers))
+	}
 
-		// Initial status resource pointer to check if it has changed
-		initialStatus := orcObject.Status.Resource
+	// Initial status resource pointer to check if it has changed
+	initialStatus := orcObject.Status.Resource
 
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
 
-		if orcObject.Status.Resource != initialStatus {
-			t.Error("expected Status.Resource to not be modified on no drift")
-		}
-	})
+	if orcObject.Status.Resource != initialStatus {
+		t.Error("expected Status.Resource to not be modified on no drift")
+	}
+}
 
-	t.Run("drift detected", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					ReadACL:    ptr.To(".r:*"),
-					WriteACL:   ptr.To("project_admin"),
-					QuotaBytes: ptr.To(int64(1000)),
-					QuotaCount: ptr.To(int64(50)),
-					Metadata: map[string]string{
-						"foo": "bar",
-					},
+func TestGetResourceReconcilers_DriftDetected(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				ReadACL:    ptr.To(".r:*"),
+				WriteACL:   ptr.To("project_admin"),
+				QuotaBytes: ptr.To(int64(1000)),
+				QuotaCount: ptr.To(int64(50)),
+				Metadata: map[string]string{
+					"foo": "bar",
 				},
 			},
-		}
+		},
+	}
 
-		osResource := &osResourceT{
-			Container: containers.Container{
-				Name: "test-container",
+	osResource := &osResourceT{
+		Container: containers.Container{
+			Name: "test-container",
+		},
+		Headers: map[string]string{
+			"X-Container-Read":             ".r:-internal.com", // drifted
+			"X-Container-Write":            "admin_only",       // drifted
+			"X-Container-Meta-Quota-Bytes": "2000",             // drifted
+			"X-Container-Meta-Quota-Count": "100",              // drifted
+			"X-Container-Meta-Foo":         "baz",              // drifted
+		},
+	}
+
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
+	if len(reconcilers) != 1 {
+		t.Fatalf("expected 1 reconciler, got %d", len(reconcilers))
+	}
+
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
+
+	status := orcObject.Status.Resource
+	if status == nil {
+		t.Fatal("expected Status.Resource to be populated")
+	}
+	if status.ReadACL != ".r:-internal.com" {
+		t.Errorf("expected ReadACL .r:-internal.com, got %s", status.ReadACL)
+	}
+	if status.WriteACL != "admin_only" {
+		t.Errorf("expected WriteACL admin_only, got %s", status.WriteACL)
+	}
+	if status.QuotaBytes == nil || *status.QuotaBytes != 2000 {
+		t.Errorf("expected QuotaBytes 2000, got %v", status.QuotaBytes)
+	}
+	if status.QuotaCount == nil || *status.QuotaCount != 100 {
+		t.Errorf("expected QuotaCount 100, got %v", status.QuotaCount)
+	}
+	if status.Metadata["foo"] != "baz" {
+		t.Errorf("expected Metadata foo=baz, got %v", status.Metadata)
+	}
+}
+
+func TestGetResourceReconcilers_DriftOnReadACL(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				ReadACL: ptr.To(".r:*"),
 			},
-			Headers: map[string]string{
-				"X-Container-Read":             ".r:-internal.com", // drifted
-				"X-Container-Write":            "admin_only",       // drifted
-				"X-Container-Meta-Quota-Bytes": "2000",             // drifted
-				"X-Container-Meta-Quota-Count": "100",              // drifted
-				"X-Container-Meta-Foo":         "baz",              // drifted
+		},
+	}
+
+	osResource := &osResourceT{
+		Container: containers.Container{Name: "test-container"},
+		Headers: map[string]string{
+			"X-Container-Read": ".r:-internal.com",
+		},
+	}
+
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
+
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
+
+	if orcObject.Status.Resource == nil || orcObject.Status.Resource.ReadACL != ".r:-internal.com" {
+		t.Errorf("expected status ReadACL to be .r:-internal.com, got %v", orcObject.Status.Resource)
+	}
+}
+
+func TestGetResourceReconcilers_DriftOnWriteACL(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				WriteACL: ptr.To("project_admin"),
 			},
-		}
+		},
+	}
 
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-		if len(reconcilers) != 1 {
-			t.Fatalf("expected 1 reconciler, got %d", len(reconcilers))
-		}
+	osResource := &osResourceT{
+		Container: containers.Container{Name: "test-container"},
+		Headers: map[string]string{
+			"X-Container-Write": "admin_only",
+		},
+	}
 
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
 
-		status := orcObject.Status.Resource
-		if status == nil {
-			t.Fatal("expected Status.Resource to be populated")
-		}
-		if status.ReadACL != ".r:-internal.com" {
-			t.Errorf("expected ReadACL .r:-internal.com, got %s", status.ReadACL)
-		}
-		if status.WriteACL != "admin_only" {
-			t.Errorf("expected WriteACL admin_only, got %s", status.WriteACL)
-		}
-		if status.QuotaBytes == nil || *status.QuotaBytes != 2000 {
-			t.Errorf("expected QuotaBytes 2000, got %v", status.QuotaBytes)
-		}
-		if status.QuotaCount == nil || *status.QuotaCount != 100 {
-			t.Errorf("expected QuotaCount 100, got %v", status.QuotaCount)
-		}
-		if status.Metadata["foo"] != "baz" {
-			t.Errorf("expected Metadata foo=baz, got %v", status.Metadata)
-		}
-	})
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
 
-	t.Run("drift on ReadACL", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					ReadACL: ptr.To(".r:*"),
+	if orcObject.Status.Resource == nil || orcObject.Status.Resource.WriteACL != "admin_only" {
+		t.Errorf("expected status WriteACL to be admin_only, got %v", orcObject.Status.Resource)
+	}
+}
+
+func TestGetResourceReconcilers_DriftOnStoragePolicy(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				StoragePolicy: ptr.To("GoldPolicy"),
+			},
+		},
+	}
+
+	osResource := &osResourceT{
+		Container: containers.Container{Name: "test-container"},
+		Headers: map[string]string{
+			"X-Storage-Policy": "SilverPolicy",
+		},
+	}
+
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
+
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
+
+	if orcObject.Status.Resource == nil || orcObject.Status.Resource.StoragePolicy != "SilverPolicy" {
+		t.Errorf("expected status StoragePolicy to be SilverPolicy, got %v", orcObject.Status.Resource)
+	}
+}
+
+func TestGetResourceReconcilers_DriftOnQuotaBytes(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				QuotaBytes: ptr.To(int64(1000)),
+			},
+		},
+	}
+
+	osResource := &osResourceT{
+		Container: containers.Container{Name: "test-container"},
+		Headers: map[string]string{
+			"X-Container-Meta-Quota-Bytes": "2000",
+		},
+	}
+
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
+
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
+
+	if orcObject.Status.Resource == nil || orcObject.Status.Resource.QuotaBytes == nil || *orcObject.Status.Resource.QuotaBytes != 2000 {
+		t.Errorf("expected status QuotaBytes to be 2000, got %v", orcObject.Status.Resource)
+	}
+}
+
+func TestGetResourceReconcilers_DriftOnQuotaCount(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				QuotaCount: ptr.To(int64(50)),
+			},
+		},
+	}
+
+	osResource := &osResourceT{
+		Container: containers.Container{Name: "test-container"},
+		Headers: map[string]string{
+			"X-Container-Meta-Quota-Count": "100",
+		},
+	}
+
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
+
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
+
+	if orcObject.Status.Resource == nil || orcObject.Status.Resource.QuotaCount == nil || *orcObject.Status.Resource.QuotaCount != 100 {
+		t.Errorf("expected status QuotaCount to be 100, got %v", orcObject.Status.Resource)
+	}
+}
+
+func TestGetResourceReconcilers_DriftOnMetadata(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	defer mockctrl.Finish()
+
+	swiftClient := mock.NewMockSwiftContainerClient(mockctrl)
+	actuator := swiftcontainerActuator{osClient: swiftClient}
+
+	orcObject := &orcv1alpha1.SwiftContainer{
+		Spec: orcv1alpha1.SwiftContainerSpec{
+			Resource: &orcv1alpha1.SwiftContainerResourceSpec{
+				Metadata: map[string]string{
+					"owner": "devops",
 				},
 			},
-		}
+		},
+	}
 
-		osResource := &osResourceT{
-			Container: containers.Container{Name: "test-container"},
-			Headers: map[string]string{
-				"X-Container-Read": ".r:-internal.com",
-			},
-		}
+	osResource := &osResourceT{
+		Container: containers.Container{Name: "test-container"},
+		Headers: map[string]string{
+			"X-Container-Meta-Owner": "platform",
+		},
+	}
 
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
+	reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
+	if rs != nil {
+		t.Fatalf("unexpected error: %v", rs.GetError())
+	}
 
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
+	reconRS := reconcilers[0](context.Background(), orcObject, osResource)
+	if reconRS != nil {
+		t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
+	}
 
-		if orcObject.Status.Resource == nil || orcObject.Status.Resource.ReadACL != ".r:-internal.com" {
-			t.Errorf("expected status ReadACL to be .r:-internal.com, got %v", orcObject.Status.Resource)
-		}
-	})
-
-	t.Run("drift on WriteACL", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					WriteACL: ptr.To("project_admin"),
-				},
-			},
-		}
-
-		osResource := &osResourceT{
-			Container: containers.Container{Name: "test-container"},
-			Headers: map[string]string{
-				"X-Container-Write": "admin_only",
-			},
-		}
-
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
-
-		if orcObject.Status.Resource == nil || orcObject.Status.Resource.WriteACL != "admin_only" {
-			t.Errorf("expected status WriteACL to be admin_only, got %v", orcObject.Status.Resource)
-		}
-	})
-
-	t.Run("drift on StoragePolicy", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					StoragePolicy: ptr.To("GoldPolicy"),
-				},
-			},
-		}
-
-		osResource := &osResourceT{
-			Container: containers.Container{Name: "test-container"},
-			Headers: map[string]string{
-				"X-Storage-Policy": "SilverPolicy",
-			},
-		}
-
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
-
-		if orcObject.Status.Resource == nil || orcObject.Status.Resource.StoragePolicy != "SilverPolicy" {
-			t.Errorf("expected status StoragePolicy to be SilverPolicy, got %v", orcObject.Status.Resource)
-		}
-	})
-
-	t.Run("drift on QuotaBytes", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					QuotaBytes: ptr.To(int64(1000)),
-				},
-			},
-		}
-
-		osResource := &osResourceT{
-			Container: containers.Container{Name: "test-container"},
-			Headers: map[string]string{
-				"X-Container-Meta-Quota-Bytes": "2000",
-			},
-		}
-
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
-
-		if orcObject.Status.Resource == nil || orcObject.Status.Resource.QuotaBytes == nil || *orcObject.Status.Resource.QuotaBytes != 2000 {
-			t.Errorf("expected status QuotaBytes to be 2000, got %v", orcObject.Status.Resource)
-		}
-	})
-
-	t.Run("drift on QuotaCount", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					QuotaCount: ptr.To(int64(50)),
-				},
-			},
-		}
-
-		osResource := &osResourceT{
-			Container: containers.Container{Name: "test-container"},
-			Headers: map[string]string{
-				"X-Container-Meta-Quota-Count": "100",
-			},
-		}
-
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
-
-		if orcObject.Status.Resource == nil || orcObject.Status.Resource.QuotaCount == nil || *orcObject.Status.Resource.QuotaCount != 100 {
-			t.Errorf("expected status QuotaCount to be 100, got %v", orcObject.Status.Resource)
-		}
-	})
-
-	t.Run("drift on Metadata", func(t *testing.T) {
-		orcObject := &orcv1alpha1.SwiftContainer{
-			Spec: orcv1alpha1.SwiftContainerSpec{
-				Resource: &orcv1alpha1.SwiftContainerResourceSpec{
-					Metadata: map[string]string{
-						"owner": "devops",
-					},
-				},
-			},
-		}
-
-		osResource := &osResourceT{
-			Container: containers.Container{Name: "test-container"},
-			Headers: map[string]string{
-				"X-Container-Meta-Owner": "platform",
-			},
-		}
-
-		reconcilers, rs := actuator.GetResourceReconcilers(context.Background(), orcObject, osResource, nil)
-		if rs != nil {
-			t.Fatalf("unexpected error: %v", rs.GetError())
-		}
-
-		reconRS := reconcilers[0](context.Background(), orcObject, osResource)
-		if reconRS != nil {
-			t.Fatalf("unexpected reconcile status: %v", reconRS.GetError())
-		}
-
-		if orcObject.Status.Resource == nil || orcObject.Status.Resource.Metadata["owner"] != "platform" {
-			t.Errorf("expected status Metadata owner=platform, got %v", orcObject.Status.Resource)
-		}
-	})
+	if orcObject.Status.Resource == nil || orcObject.Status.Resource.Metadata["owner"] != "platform" {
+		t.Errorf("expected status Metadata owner=platform, got %v", orcObject.Status.Resource)
+	}
 }
