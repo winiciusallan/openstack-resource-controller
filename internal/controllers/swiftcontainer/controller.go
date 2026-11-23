@@ -16,4 +16,61 @@ limitations under the License.
 
 package swiftcontainer
 
+import (
+	"context"
+	"errors"
+	"time"
+
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+
+	orcv1alpha1 "github.com/k-orc/openstack-resource-controller/v3/api/v1alpha1"
+
+	"github.com/k-orc/openstack-resource-controller/v3/internal/controllers/generic/interfaces"
+	"github.com/k-orc/openstack-resource-controller/v3/internal/controllers/generic/reconciler"
+	"github.com/k-orc/openstack-resource-controller/v3/internal/scope"
+	"github.com/k-orc/openstack-resource-controller/v3/internal/util/credentials"
+)
+
 const controllerName = "swiftcontainer"
+
+// +kubebuilder:rbac:groups=openstack.k-orc.cloud,resources=swiftcontainers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openstack.k-orc.cloud,resources=swiftcontainers/status,verbs=get;update;patch
+
+type swiftcontainerReconcilerConstructor struct {
+	scopeFactory        scope.Factory
+	defaultResyncPeriod time.Duration
+}
+
+func New(scopeFactory scope.Factory) interfaces.Controller {
+	return &swiftcontainerReconcilerConstructor{
+		scopeFactory: scopeFactory,
+	}
+}
+
+func (swiftcontainerReconcilerConstructor) GetName() string {
+	return controllerName
+}
+
+func (c *swiftcontainerReconcilerConstructor) SetDefaultResyncPeriod(d time.Duration) {
+	c.defaultResyncPeriod = d
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (c *swiftcontainerReconcilerConstructor) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
+	log := ctrl.LoggerFrom(ctx)
+
+	builder := ctrl.NewControllerManagedBy(mgr).
+		WithOptions(options).
+		For(&orcv1alpha1.SwiftContainer{})
+
+	if err := errors.Join(
+		credentialsDependency.AddToManager(ctx, mgr),
+		credentials.AddCredentialsWatch(log, mgr.GetClient(), builder, credentialsDependency),
+	); err != nil {
+		return err
+	}
+
+	r := reconciler.NewController(controllerName, mgr.GetClient(), c.scopeFactory, swiftcontainerHelperFactory{}, swiftcontainerStatusWriter{}, c.defaultResyncPeriod)
+	return builder.Complete(&r)
+}
