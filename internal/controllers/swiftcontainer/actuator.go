@@ -110,11 +110,12 @@ func (actuator swiftcontainerActuator) GetOSResourceByID(ctx context.Context, id
 	var count, bytes int64
 	for k, v := range headers {
 		lowerK := strings.ToLower(k)
-		if lowerK == "x-container-object-count" {
+		switch lowerK {
+		case "x-container-object-count":
 			if c, err := strconv.ParseInt(v, 10, 64); err == nil {
 				count = c
 			}
-		} else if lowerK == "x-container-bytes-used" {
+		case "x-container-bytes-used":
 			if b, err := strconv.ParseInt(v, 10, 64); err == nil {
 				bytes = b
 			}
@@ -243,11 +244,12 @@ func (actuator swiftcontainerActuator) CreateResource(ctx context.Context, orcOb
 	var count, bytes int64
 	for k, v := range headers {
 		lowerK := strings.ToLower(k)
-		if lowerK == "x-container-object-count" {
+		switch lowerK {
+		case "x-container-object-count":
 			if c, err := strconv.ParseInt(v, 10, 64); err == nil {
 				count = c
 			}
-		} else if lowerK == "x-container-bytes-used" {
+		case "x-container-bytes-used":
 			if b, err := strconv.ParseInt(v, 10, 64); err == nil {
 				bytes = b
 			}
@@ -266,7 +268,7 @@ func (actuator swiftcontainerActuator) CreateResource(ctx context.Context, orcOb
 
 func (actuator swiftcontainerActuator) DeleteResource(ctx context.Context, orcObject orcObjectPT, osResource *osResourceT) progress.ReconcileStatus {
 	if osResource.Count > 0 {
-		err := fmt.Errorf("Cannot delete container: Swift container is not empty.")
+		err := fmt.Errorf("cannot delete container: Swift container is not empty")
 		return progress.WrapError(orcerrors.Terminal(orcv1alpha1.ConditionReasonUnrecoverableError, err.Error(), err))
 	}
 	return progress.WrapError(actuator.osClient.DeleteContainer(ctx, osResource.Name))

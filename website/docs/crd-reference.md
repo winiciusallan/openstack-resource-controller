@@ -5943,9 +5943,9 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `name` _[OpenStackName](#openstackname)_ | name is the exact name of the Swift container. |  | MaxLength: 255 <br />MinLength: 1 <br />Pattern: `^[^,]+$` <br />Optional: \{\} <br /> |
-| `storagePolicy` _string_ | storagePolicy filter by Swift storage policy |  | Optional: \{\} <br /> |
-| `readACL` _string_ | readACL filter by X-Container-Read access control rules |  | Optional: \{\} <br /> |
-| `writeACL` _string_ | writeACL filter by X-Container-Write access control rules |  | Optional: \{\} <br /> |
+| `storagePolicy` _string_ | storagePolicy filter by Swift storage policy |  | MaxLength: 1024 <br />Optional: \{\} <br /> |
+| `readACL` _string_ | readACL filter by X-Container-Read access control rules |  | MaxLength: 1024 <br />Optional: \{\} <br /> |
+| `writeACL` _string_ | writeACL filter by X-Container-Write access control rules |  | MaxLength: 1024 <br />Optional: \{\} <br /> |
 | `quotaBytes` _integer_ | quotaBytes filter by maximum container size in bytes |  | Minimum: 0 <br />Optional: \{\} <br /> |
 | `quotaCount` _integer_ | quotaCount filter by maximum container object count |  | Minimum: 0 <br />Optional: \{\} <br /> |
 | `metadata` _object (keys:string, values:string)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
@@ -5986,9 +5986,9 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `name` _[OpenStackName](#openstackname)_ | name will be the name of the created resource. If not specified, the<br />name of the ORC object will be used. |  | MaxLength: 255 <br />MinLength: 1 <br />Pattern: `^[^,]+$` <br />Optional: \{\} <br /> |
 | `metadata` _object (keys:string, values:string)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
-| `readACL` _string_ | readACL translates to X-Container-Read access control rules. |  | Optional: \{\} <br /> |
-| `writeACL` _string_ | writeACL translates to X-Container-Write access control rules. |  | Optional: \{\} <br /> |
-| `storagePolicy` _string_ | storagePolicy translates to X-Storage-Policy. |  | Optional: \{\} <br /> |
+| `readACL` _string_ | readACL translates to X-Container-Read access control rules. |  | MaxLength: 1024 <br />Optional: \{\} <br /> |
+| `writeACL` _string_ | writeACL translates to X-Container-Write access control rules. |  | MaxLength: 1024 <br />Optional: \{\} <br /> |
+| `storagePolicy` _string_ | storagePolicy translates to X-Storage-Policy. |  | MaxLength: 1024 <br />Optional: \{\} <br /> |
 | `quotaBytes` _integer_ | quotaBytes is the maximum container size limit in bytes. |  | Minimum: 0 <br />Optional: \{\} <br /> |
 | `quotaCount` _integer_ | quotaCount is the maximum container object limit count. |  | Minimum: 0 <br />Optional: \{\} <br /> |
 

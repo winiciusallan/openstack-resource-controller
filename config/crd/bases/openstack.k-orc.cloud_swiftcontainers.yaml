@@ -117,13 +117,16 @@ spec:
                       readACL:
                         description: readACL filter by X-Container-Read access control
                           rules
+                        maxLength: 1024
                         type: string
                       storagePolicy:
                         description: storagePolicy filter by Swift storage policy
+                        maxLength: 1024
                         type: string
                       writeACL:
                         description: writeACL filter by X-Container-Write access control
                           rules
+                        maxLength: 1024
                         type: string
                     type: object
                   id:
@@ -202,13 +205,16 @@ spec:
                   readACL:
                     description: readACL translates to X-Container-Read access control
                       rules.
+                    maxLength: 1024
                     type: string
                   storagePolicy:
                     description: storagePolicy translates to X-Storage-Policy.
+                    maxLength: 1024
                     type: string
                   writeACL:
                     description: writeACL translates to X-Container-Write access control
                       rules.
+                    maxLength: 1024
                     type: string
                 type: object
               resyncPeriod:

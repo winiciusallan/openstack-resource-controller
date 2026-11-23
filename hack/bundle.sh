@@ -2,7 +2,7 @@
 
 REGISTRY=${REGISTRY:-quay.io/orc}
 IMAGE=${BASE_IMAGE:-openstack-resource-controller}
-TAG=${BASE_IMAGE:-$(git describe --abbrev=0 --tags)}
+TAG=${BASE_IMAGE:-$(git describe --abbrev=0 --tags 2>/dev/null || echo "v0.0.1")}
 IMG=${REGISTRY}/${IMAGE}:${TAG}
 
 # Update config/manifests/bases/orc.clusterserviceversion.yaml if needed
@@ -20,7 +20,7 @@ kustomize edit add patch --kind ClusterServiceVersion --name "orc.*" --patch '[{
 popd || exit
 
 # Generate bundle and bundle.Dockerfile
-kustomize build "${TMP_OVERLAY}" | operator-sdk generate bundle --plugins=go.kubebuilder.io/v4 --use-image-digests
+kustomize build "${TMP_OVERLAY}" | operator-sdk generate bundle --plugins=go.kubebuilder.io/v4
 
 rm -rf "${TMP_OVERLAY}"
 

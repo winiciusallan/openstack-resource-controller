@@ -28,14 +28,17 @@ type SwiftContainerResourceSpec struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 
 	// readACL translates to X-Container-Read access control rules.
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	ReadACL *string `json:"readACL,omitempty"`
 
 	// writeACL translates to X-Container-Write access control rules.
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	WriteACL *string `json:"writeACL,omitempty"`
 
 	// storagePolicy translates to X-Storage-Policy.
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	StoragePolicy *string `json:"storagePolicy,omitempty"`
 
@@ -58,14 +61,17 @@ type SwiftContainerFilter struct {
 	Name *OpenStackName `json:"name,omitempty"`
 
 	// storagePolicy filter by Swift storage policy
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	StoragePolicy *string `json:"storagePolicy,omitempty"`
 
 	// readACL filter by X-Container-Read access control rules
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	ReadACL *string `json:"readACL,omitempty"`
 
 	// writeACL filter by X-Container-Write access control rules
+	// +kubebuilder:validation:MaxLength=1024
 	// +optional
 	WriteACL *string `json:"writeACL,omitempty"`
 

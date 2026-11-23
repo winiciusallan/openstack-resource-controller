@@ -1,0 +1,18 @@
+apiVersion: openstack.k-orc.cloud/v1alpha1
+kind: SwiftContainer
+metadata:
+  name: swiftcontainer-sample
+spec:
+  cloudCredentialsRef:
+    cloudName: openstack-admin
+    secretName: openstack-clouds
+  managementPolicy: managed
+  resource:
+    name: swiftcontainer-sample
+    readACL: ".r:*"
+    writeACL: "admin"
+    storagePolicy: "Policy-0"
+    quotaBytes: 104857600
+    quotaCount: 1000
+    metadata:
+      key1: value1

@@ -119,15 +119,16 @@ func ParseSwiftHeaders(headers map[string]string) orcv1alpha1.SwiftContainerReso
 		default:
 			if strings.HasPrefix(lowerK, "x-container-meta-") {
 				metaKey := strings.TrimPrefix(lowerK, "x-container-meta-")
-				if metaKey == "quota-bytes" {
+				switch metaKey {
+				case "quota-bytes":
 					if qb, err := strconv.ParseInt(v, 10, 64); err == nil {
 						status.QuotaBytes = ptr.To(qb)
 					}
-				} else if metaKey == "quota-count" {
+				case "quota-count":
 					if qc, err := strconv.ParseInt(v, 10, 64); err == nil {
 						status.QuotaCount = ptr.To(qc)
 					}
-				} else {
+				default:
 					status.Metadata[metaKey] = v
 				}
 			}
